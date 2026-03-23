@@ -172,11 +172,13 @@ _UNIVERSAL_FEATURE_SEEDS = {
 }
 
 
-def discover_issue_categories(df, min_pct=0.01):
+def discover_issue_categories(df, min_pct=0.05, min_count=5):
     """
-    Filter universal issue templates to only those with ≥ min_pct presence
-    in the app's negative reviews. Returns them sorted by prevalence.
-    Gives meaningful labels for any app, not random word fragments.
+    Filter universal issue templates to only those with meaningful presence
+    in the app's negative reviews. Uses both a percentage floor AND an
+    absolute count floor so a single stray review can't pull in an unrelated
+    category (e.g. one "refund" mention in a travel-app review won't surface
+    "Refund & Money Not Received" as a key issue).
     """
     neg = df[df["score"] <= 2]["content"].dropna()
     if len(neg) < 5:
@@ -184,20 +186,22 @@ def discover_issue_categories(df, min_pct=0.01):
 
     scored = {}
     for label, kws in _UNIVERSAL_ISSUE_SEEDS.items():
-        hit = neg.apply(lambda x: contains_any(x, kws)).sum()
+        hit = int(neg.apply(lambda x: contains_any(x, kws)).sum())
         pct = hit / len(neg)
-        if pct >= min_pct:
+        # Both conditions must hold: at least min_pct% AND at least min_count reviews
+        if pct >= min_pct and hit >= min_count:
             scored[label] = (kws, pct)
 
-    # Sort by prevalence, return top 20
+    # Sort by prevalence, return top 12 (only dominant issues for this specific app)
     return {label: kws for label, (kws, _) in
-            sorted(scored.items(), key=lambda x: -x[1][1])[:20]}
+            sorted(scored.items(), key=lambda x: -x[1][1])[:12]}
 
 
-def discover_feature_categories(df, min_mentions=2):
+def discover_feature_categories(df, min_mentions=5):
     """
     Filter universal feature templates to only those actually requested
-    in the app's reviews. Returns them sorted by mention count.
+    in the app's reviews. Uses a minimum of 5 reviews so a single mention
+    of a keyword doesn't create a spurious feature-request category.
     """
     all_text = df["content"].dropna()
     scored = {}
